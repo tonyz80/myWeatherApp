@@ -1,73 +1,65 @@
-# User Authentication for Streamlit App using MongoDB
-# https://medium.com/@pavlo_sydorenko/simple-user-authentication-for-your-streamlit-app-using-mongodb-d6a481bbfa1
+from flask import Flask, render_template, request
+import requests
 
-import streamlit as st
-import pymongo
-from pymongo.server_api import ServerApi
+app = Flask(__name__)
 
-# Connect to the DB.
-@st.experimental_singleton
-def connect_db():
-    client = pymongo.MongoClient(
-      st.secrets["connString"], server_api=ServerApi('1'))
-    db = client.get_database('dbmanagers')
-    return db.users
+# Convert city → coordinates using Open-Meteo geocoding API
+def get_coordinates(city):
+    url = "https://geocoding-api.open-meteo.com/v1/search"
+    params = {
+        "name": city,
+        "count": 1
+    }
 
-def select_signup():
-    st.session_state.form = 'signup_form'
+    r = requests.get(url, params=params, timeout=10)
+    data = r.json()
 
-def user_update(name):
-    st.session_state.username = name
+    if "results" not in data:
+        return None
 
-def select_signup():
-    st.session_state.form = 'signup_form'
-#################################################
-########### Start of the program ################
-#################################################
-
-st.set_page_config(
-	page_title="Lebanese Diaspora - USA",
-	page_icon="Leb-Flag.png",
-	layout="wide",
-	initial_sidebar_state="expanded",
-	menu_items={
-		'Get help': 'https://github.com/tonyz80/streamLFUS/issues/1',
-		'Report a bug': "https://github.com/tonyz80/streamLFUS/issues",
-		'About': "# This app was designed by Tony Ziade tonyz80@gmail.com"
-	})
-
-#To hide the Streamlit hamburger (top right corner) and the “Made with Streamlit” footer:
-# per https://discuss.streamlit.io/t/remove-made-with-streamlit-from-bottom-of-app/1370/5
-hide_streamlit_style = """
-            <style>
-            #MainMenu {visibility: hidden;}
-            footer {visibility: hidden;}
-            #header {visibility: hidden;}
-            </style>
-            """
-st.markdown(hide_streamlit_style, unsafe_allow_html=True)
-
-# Initialize Session States.
-if 'username' not in st.session_state:
-	st.session_state.username = ''
-
-st.title('Pavlo Database Connection')
-st.sidebar.image('LF-Logo.png',caption=None, width=100, use_column_width=False, clamp=True, channels='RGB', output_format='center')
-st.sidebar.title("Login Form")
-
-#choice = st.sidebar.selectbox('Choose Access', ['Login', 'Logout'])
-username = st.sidebar.text_input('Email')
-userpassword = st.sidebar.text_input('Password',type = 'password')
-login=st.sidebar.button('Login')
-
-users_db = connect_db()
-st.write(users_db.find({'log' : username}))
+    result = data["results"][0]
+    return result["latitude"], result["longitude"], result["name"], result["country"]
 
 
-# After 'username' and 'userpassword' are entered by the user
-# Check matched in the database
-if users_db.find_one({'log' : username, 'pass' : userpassword}):
-	st.sidebar.success(f"You are logged in as {username}")
-	if login:
-		# Function selection to demonstrate how usernames are passed
-		application = st.selectbox('Pick a Functon', ('Do smth', 'Do smth again'))
+# Fetch weather
+def get_weather(lat, lon):
+    url = "https://api.open-meteo.com/v1/forecast"
+    params = {
+        "latitude": lat,
+        "longitude": lon,
+        "current_weather": True
+    }
+
+    r = requests.get(url, params=params, timeout=10)
+    data = r.json()
+
+    return data.get("current_weather", None)
+
+
+@app.route("/", methods=["GET", "POST"])
+def index():
+    weather = None
+    location = None
+    error = None
+
+    if request.method == "POST":
+        city = request.form.get("city")
+
+        coords = get_coordinates(city)
+        if not coords:
+            error = "City not found."
+        else:
+            lat, lon, name, country = coords
+            weather = get_weather(lat, lon)
+            location = f"{name}, {country}"
+
+    return render_template(
+        "index.html",
+        weather=weather,
+        location=location,
+        error=error
+    )
+
+
+if __name__ == "__main__":
+    app.run(host="0.0.0.0", port=5000)
