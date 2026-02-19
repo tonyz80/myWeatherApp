@@ -27,7 +27,12 @@ def get_weather(lat, lon):
     params = {
         "latitude": lat,
         "longitude": lon,
-        "current_weather": True
+        "current_weather": True,
+        "hourly": ["uv_index", "sunshine_duration", "direct_radiation"],
+        "current": ["temperature_2m", "relative_humidity_2m", "apparent_temperature", "is_day", "precipitation", "wind_speed_10m", "rain", "wind_direction_10m"],
+        "wind_speed_unit": "mph",
+        "temperature_unit": "fahrenheit",
+        "precipitation_unit": "inch",        
     }
 
     r = requests.get(url, params=params, timeout=10)
